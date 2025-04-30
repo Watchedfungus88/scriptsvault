@@ -10,7 +10,8 @@ create_script() {
     echo "Press CTRL+D when you are finished pasting."
     echo "---------------------------------"
 
-    script_content=$(cat)
+    # Read from the terminal, not the stdin pipe
+    script_content=$(cat < /dev/tty)
 
     if [[ -z "$script_content" ]]; then
         echo "-----"
@@ -21,7 +22,8 @@ create_script() {
 
     echo
     echo "---------------------------------"
-    read -p "Enter the desired filename (without .txt extension): " filename
+    # Read from the terminal
+    read -p "Enter the desired filename (without .txt extension): " filename < /dev/tty
 
     if [[ -z "$filename" ]]; then
         echo "-----"
@@ -33,7 +35,8 @@ create_script() {
     filepath="$TARGET_DIR/$filename.txt"
 
     if [[ -e "$filepath" ]]; then
-        read -p "Warning: File '$filename.txt' already exists. Overwrite? (y/N): " confirm_overwrite
+        # Read from the terminal
+        read -p "Warning: File '$filename.txt' already exists. Overwrite? (y/N): " confirm_overwrite < /dev/tty
         if [[ ! "$confirm_overwrite" =~ ^[Yy]$ ]]; then
              echo "-----"
              echo "Script creation cancelled."
@@ -67,24 +70,19 @@ remove_script() {
         return
     fi
 
-    # Bash 3.x compatible way to read null-terminated file list from find
-    local files=() # Declare an empty array to store filenames
+    local files=()
     while IFS= read -r -d $'\0' file; do
-        # Check if it's actually a file path (find might return just the directory if empty)
-        # and not the directory itself.
         if [[ -n "$file" && "$file" != "$TARGET_DIR" ]]; then
-             files+=("$file") # Add the file path to the array
+             files+=("$file")
         fi
-    done < <(find "$TARGET_DIR" -maxdepth 1 -type f -print0) # Use process substitution
+    done < <(find "$TARGET_DIR" -maxdepth 1 -type f -print0)
 
-    # Check if any files were found
     if [[ ${#files[@]} -eq 0 ]]; then
         echo "No script files found in '$TARGET_DIR'."
         echo "---------------------------------"
         return
     fi
 
-    # List files with numbers
     local i=0
     while [[ $i -lt ${#files[@]} ]]; do
         echo "$((i + 1)) - $(basename "${files[i]}")"
@@ -93,7 +91,8 @@ remove_script() {
     echo "0 - Cancel"
     echo "---------------------------------"
 
-    read -p "Enter the number of the file to delete (or 0 to cancel): " choice
+    # Read from the terminal
+    read -p "Enter the number of the file to delete (or 0 to cancel): " choice < /dev/tty
 
     if [[ ! "$choice" =~ ^[0-9]+$ ]]; then
         echo "Error: Invalid input. Please enter a number."
@@ -116,7 +115,8 @@ remove_script() {
     file_to_delete="${files[$((choice - 1))]}"
     filename_only=$(basename "$file_to_delete")
 
-    read -p "Are you sure you want to delete '$filename_only'? (y/N): " confirm_delete
+    # Read from the terminal
+    read -p "Are you sure you want to delete '$filename_only'? (y/N): " confirm_delete < /dev/tty
     if [[ "$confirm_delete" =~ ^[Yy]$ ]]; then
         rm "$file_to_delete"
         if [[ $? -eq 0 ]]; then
@@ -146,7 +146,8 @@ while true; do
     echo " 2) Remove Autoexecute script"
     echo " 3) Exit"
     echo "---------------------------------"
-    read -p "Choose an option (1-3): " main_choice
+    # Read from the terminal
+    read -p "Choose an option (1-3): " main_choice < /dev/tty
 
     case $main_choice in
         1)
@@ -164,6 +165,7 @@ while true; do
             ;;
     esac
     echo
-    read -n 1 -s -r -p "Press any key to continue..."
+    # Read from the terminal
+    read -n 1 -s -r -p "Press any key to continue..." < /dev/tty
     echo
 done
