@@ -1,7 +1,54 @@
 #!/bin/bash
 
-# Define the target directory using ~ which expands to the user's home directory
+# Define the target directory for user scripts
 TARGET_DIR="$HOME/Documents/Macsploit Automatic Execution"
+
+# --- Function to Enable Auto Execute (Replaces First Line in Downloads/ms-settings) ---
+enable_auto_execute_downloads() {
+    local settings_filename="ms-settings"
+    local MS_SETTINGS_FILE="$HOME/Downloads/$settings_filename" # Specific path to check
+
+    echo "---------------------------------"
+    echo "Checking for '$settings_filename' in Downloads folder..."
+    echo "Path: $MS_SETTINGS_FILE"
+
+    # --- Check if file exists at the specific path ---
+    if [[ ! -f "$MS_SETTINGS_FILE" ]]; then
+        echo "Error: Settings file not found at '$MS_SETTINGS_FILE'."
+        echo "Auto Execute cannot be enabled automatically."
+        echo "---------------------------------"
+        return
+    fi
+
+    # --- Replace First Line Logic ---
+    echo "Found settings file: $MS_SETTINGS_FILE"
+    echo "Attempting to replace FIRST LINE with 'autoExecute true'..."
+
+    # ---- SED: Replace line 1 ----
+    # '1s/.*/autoExecute true/' means: On line 1 (1), substitute (s) the entire line (.*) with 'autoExecute true'.
+    sed -i '' '1s/.*/autoExecute true/' "$MS_SETTINGS_FILE"
+    local sed_exit_code=$? # Capture exit code immediately
+    # ---- END SED ----
+
+    # Verify the change by checking the new first line
+    if [[ $sed_exit_code -eq 0 ]]; then
+        # Get the first line AFTER the sed command
+        local first_line
+        first_line=$(head -n 1 "$MS_SETTINGS_FILE")
+
+        if [[ "$first_line" == "autoExecute true" ]]; then
+             echo "Success: First line of '$MS_SETTINGS_FILE' set to 'autoExecute true'."
+        else
+             # This case should be less likely now, but indicates sed ran but didn't result in the expected first line
+             echo "Error: Failed to modify '$MS_SETTINGS_FILE'. Verification check failed after replacing first line."
+        fi
+    else
+        # sed command itself failed (permissions, etc.)
+        echo "Error: Failed to modify '$MS_SETTINGS_FILE'. The command to change the line failed (Exit code: $sed_exit_code)."
+    fi
+    echo "---------------------------------"
+}
+
 
 # --- Function to Create Script ---
 create_script() {
@@ -9,38 +56,27 @@ create_script() {
     echo "Paste your script content below."
     echo "Press CTRL+D when you are finished pasting."
     echo "---------------------------------"
-
-    # Read from the terminal, not the stdin pipe
-    script_content=$(cat < /dev/tty)
+    script_content=$(cat < /dev/tty) # Read from terminal
 
     if [[ -z "$script_content" ]]; then
-        echo "-----"
-        echo "Error: No content provided. Script creation cancelled."
-        echo "-----"
+        echo "-----"; echo "Error: No content provided. Script creation cancelled."; echo "-----"
         return
     fi
 
-    echo
-    echo "---------------------------------"
-    # Read from the terminal
-    read -p "Enter the desired filename (without .txt extension): " filename < /dev/tty
+    echo; echo "---------------------------------"
+    read -p "Enter the desired filename (without .txt extension): " filename < /dev/tty # Read from terminal
 
     if [[ -z "$filename" ]]; then
-        echo "-----"
-        echo "Error: No filename provided. Script creation cancelled."
-        echo "-----"
+        echo "-----"; echo "Error: No filename provided. Script creation cancelled."; echo "-----"
         return
     fi
 
     filepath="$TARGET_DIR/$filename.txt"
 
     if [[ -e "$filepath" ]]; then
-        # Read from the terminal
-        read -p "Warning: File '$filename.txt' already exists. Overwrite? (y/N): " confirm_overwrite < /dev/tty
+        read -p "Warning: File '$filename.txt' already exists. Overwrite? (y/N): " confirm_overwrite < /dev/tty # Read from terminal
         if [[ ! "$confirm_overwrite" =~ ^[Yy]$ ]]; then
-             echo "-----"
-             echo "Script creation cancelled."
-             echo "-----"
+             echo "-----"; echo "Script creation cancelled."; echo "-----"
              return
         fi
     fi
@@ -48,13 +84,9 @@ create_script() {
     printf "%s" "$script_content" > "$filepath"
 
     if [[ $? -eq 0 ]]; then
-        echo "-----"
-        echo "Success: Script '$filename.txt' created in '$TARGET_DIR'."
-        echo "-----"
+        echo "-----"; echo "Success: Script '$filename.txt' created in '$TARGET_DIR'."; echo "-----"
     else
-        echo "-----"
-        echo "Error: Failed to create script '$filename.txt'."
-        echo "-----"
+        echo "-----"; echo "Error: Failed to create script '$filename.txt'."; echo "-----"
     fi
 }
 
@@ -75,7 +107,7 @@ remove_script() {
         if [[ -n "$file" && "$file" != "$TARGET_DIR" ]]; then
              files+=("$file")
         fi
-    done < <(find "$TARGET_DIR" -maxdepth 1 -type f -print0)
+    done < <(find "$TARGET_DIR" -maxdepth 1 -type f -print0 2>/dev/null) # Suppress find errors like perm denied
 
     if [[ ${#files[@]} -eq 0 ]]; then
         echo "No script files found in '$TARGET_DIR'."
@@ -91,32 +123,27 @@ remove_script() {
     echo "0 - Cancel"
     echo "---------------------------------"
 
-    # Read from the terminal
-    read -p "Enter the number of the file to delete (or 0 to cancel): " choice < /dev/tty
+    read -p "Enter the number of the file to delete (or 0 to cancel): " choice < /dev/tty # Read from terminal
 
     if [[ ! "$choice" =~ ^[0-9]+$ ]]; then
-        echo "Error: Invalid input. Please enter a number."
-        echo "---------------------------------"
+        echo "Error: Invalid input. Please enter a number."; echo "---------------------------------"
         return
     fi
 
     if [[ "$choice" -eq 0 ]]; then
-        echo "Deletion cancelled."
-        echo "---------------------------------"
+        echo "Deletion cancelled."; echo "---------------------------------"
         return
     fi
 
     if [[ "$choice" -gt ${#files[@]} || "$choice" -lt 1 ]]; then
-        echo "Error: Invalid number. Please choose a number from the list."
-        echo "---------------------------------"
+        echo "Error: Invalid number. Please choose a number from the list."; echo "---------------------------------"
         return
     fi
 
     file_to_delete="${files[$((choice - 1))]}"
     filename_only=$(basename "$file_to_delete")
 
-    # Read from the terminal
-    read -p "Are you sure you want to delete '$filename_only'? (y/N): " confirm_delete < /dev/tty
+    read -p "Are you sure you want to delete '$filename_only'? (y/N): " confirm_delete < /dev/tty # Read from terminal
     if [[ "$confirm_delete" =~ ^[Yy]$ ]]; then
         rm "$file_to_delete"
         if [[ $? -eq 0 ]]; then
@@ -132,40 +159,44 @@ remove_script() {
 
 # --- Main Script Logic ---
 
+# Ensure the user script directory exists
 mkdir -p "$TARGET_DIR"
 if [[ $? -ne 0 ]]; then
     echo "Error: Could not create directory '$TARGET_DIR'. Please check permissions."
     exit 1
 fi
 
+# Main Menu Loop
 while true; do
     echo "================================="
-    echo " Macsploit Autoexec Script Manager "
+    echo " Macsploit Script Manager Menu   "
     echo "================================="
-    echo " 1) Create Autoexecute script"
-    echo " 2) Remove Autoexecute script"
-    echo " 3) Exit"
+    echo " 1) Enable Macsploit Auto Execute (Checks Downloads)" # Description might need update if path changes
+    echo " 2) Create Autoexecute script file"
+    echo " 3) Remove Autoexecute script file"
+    echo " 4) Exit"
     echo "---------------------------------"
-    # Read from the terminal
-    read -p "Choose an option (1-3): " main_choice < /dev/tty
+    read -p "Choose an option (1-4): " main_choice < /dev/tty # Read from terminal
 
     case $main_choice in
         1)
-            create_script
+            enable_auto_execute_downloads # Use function that replaces first line
             ;;
         2)
-            remove_script
+            create_script
             ;;
         3)
+            remove_script
+            ;;
+        4)
             echo "Exiting."
             exit 0
             ;;
         *)
-            echo "Invalid option. Please choose 1, 2, or 3."
+            echo "Invalid option. Please choose 1, 2, 3, or 4."
             ;;
     esac
     echo
-    # Read from the terminal
-    read -n 1 -s -r -p "Press any key to continue..." < /dev/tty
+    read -n 1 -s -r -p "Press any key to continue..." < /dev/tty # Read from terminal
     echo
 done
