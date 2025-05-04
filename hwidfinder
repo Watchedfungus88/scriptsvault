@@ -1,0 +1,87 @@
+#!/bin/bash
+
+# Function to repeat a character n times
+repeat_char() {
+  local char="$1"
+  local count="$2"
+  printf "%${count}s" | tr " " "$char"
+}
+
+# Function to center text
+center_text() {
+  local text="$1"
+  local width="$2"
+  local textlen=${#text}
+  local padding=$(( (width - textlen) / 2 ))
+  
+  printf "%${padding}s%s%${padding}s" "" "$text" ""
+  # Add an extra space if width - textlen is odd
+  if [ $(( (width - textlen) % 2 )) -ne 0 ]; then
+    printf " "
+  fi
+}
+
+# Get the Hardware UUID using the specified method
+hwid=$(ioreg -d2 -c IOPlatformExpertDevice | awk -F\" '/IOPlatformUUID/{print $(NF-1)}')
+
+# Error handling
+if [ -z "$hwid" ]; then
+  echo "Error: Failed to retrieve Hardware UUID."
+  # Try an alternative method
+  hwid=$(system_profiler SPHardwareDataType | grep "Hardware UUID" | awk '{print $NF}')
+
+  if [ -z "$hwid" ]; then
+    echo "Error: Alternative method also failed."
+    exit 1
+  fi
+fi
+
+# Set a default if somehow still empty
+if [ -z "$hwid" ]; then
+  hwid="UUID_NOT_FOUND"
+fi
+
+# Convert the Hardware UUID to SHA-1 hash
+hashed_hwid=$(echo -n "$hwid" | openssl sha1 | awk '{print $2}')
+
+# Prepare the text for display
+title="Your HWID:"
+uuid="$hashed_hwid"
+
+# Calculate the width needed for the frame
+title_len=${#title}
+uuid_len=${#uuid}
+content_width=$(( uuid_len > title_len ? uuid_len + 6 : title_len + 6 ))
+
+# Build the frame and centered content
+top_border="╔$(repeat_char '═' $content_width)╗"
+bottom_border="╚$(repeat_char '═' $content_width)╝"
+side_border="║"
+
+# Create the centered content directly to ensure it's visible
+title_padding=$(( (content_width - ${#title}) / 2 ))
+uuid_padding=$(( (content_width - ${#uuid}) / 2 ))
+
+title_spaces=$(repeat_char ' ' $title_padding)
+uuid_spaces=$(repeat_char ' ' $uuid_padding)
+
+# Add extra space at the end if needed
+title_extra=""
+uuid_extra=""
+if [ $(( (content_width - ${#title}) % 2 )) -ne 0 ]; then
+  title_extra=" "
+fi
+if [ $(( (content_width - ${#uuid}) % 2 )) -ne 0 ]; then
+  uuid_extra=" "
+fi
+
+# Display the framed UUID
+echo "$top_border"
+echo "$side_border$title_spaces$title$title_spaces$title_extra$side_border"
+echo "$side_border$uuid_spaces$uuid$uuid_spaces$uuid_extra$side_border"
+echo "$bottom_border"
+
+# Add signature line
+signature="-HWID finder by WatchedFungus88🍄"
+signature_padding=$(( (content_width - ${#signature}) / 2 ))
+echo "$(repeat_char ' ' $signature_padding)$signature"
