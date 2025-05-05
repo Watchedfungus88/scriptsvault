@@ -40,40 +40,66 @@ center_text_line() {
 echo "Attempting to retrieve Hardware UUID..." >&2 # Print status to stderr
 
 # Method 1: ioreg
-hwid=$(ioreg -d2 -c IOPlatformExpertDevice | awk -F\" '/IOPlatformUUID/{print $(NF-1)}')
+hwid_raw=$(ioreg -d2 -c IOPlatformExpertDevice | awk -F\" '/IOPlatformUUID/{print $(NF-1)}')
 
 # Check Method 1
-if [ -z "$hwid" ]; then
+if [ -z "$hwid_raw" ]; then
   echo "Method 1 (ioreg) failed. Trying alternative..." >&2
   # Method 2: system_profiler
-  hwid=$(system_profiler SPHardwareDataType | awk '/Hardware UUID/{print $NF}')
+  hwid_raw=$(system_profiler SPHardwareDataType | awk '/Hardware UUID/{print $NF}')
 
   # Check Method 2
-  if [ -z "$hwid" ]; then
+  if [ -z "$hwid_raw" ]; then
     echo "Method 2 (system_profiler) also failed." >&2
-    hwid="UUID_NOT_FOUND" # Use a placeholder if retrieval fails
+    hwid_raw="UUID_NOT_FOUND" # Use a placeholder if retrieval fails
+    retrieval_failed=true
   else
     echo "Method 2 (system_profiler) successful." >&2
+    retrieval_failed=false
   fi
 else
     echo "Method 1 (ioreg) successful." >&2
+    retrieval_failed=false
 fi
 
-echo "Retrieved Raw HWID (or fallback): $hwid" >&2 # Debug output
+echo "Retrieved Raw HWID (or fallback): $hwid_raw" >&2 # Debug output
+
+
+# --- Hashing ---
+# Use a different variable for the final ID to display
+if [[ "$retrieval_failed" == true ]]; then
+    # If retrieval failed, display the error message directly
+    unique_id_to_display="$hwid_raw"
+    echo "HWID retrieval failed, displaying error message." >&2
+    title="HWID Retrieval Failed:" # Update title for error
+else
+    # Attempt to hash the retrieved HWID using SHA-1
+    echo "Hashing the retrieved HWID ($hwid_raw) using SHA-1..." >&2
+    # Use echo -n to avoid adding a newline to the hash input
+    # Use shasum (common on macOS) and extract only the hash part
+    hashed_id=$(echo -n "$hwid_raw" | shasum -a 1 | awk '{print $1}')
+
+    if [ -n "$hashed_id" ]; then
+        unique_id_to_display="$hashed_id"
+        echo "Successfully generated SHA-1 hash: $unique_id_to_display" >&2
+        title="Your Unique ID (SHA-1):" # Update title for hash
+    else
+        # Fallback if hashing command failed for some reason
+        echo "Warning: SHA-1 hashing failed. Displaying raw HWID instead." >&2
+        unique_id_to_display="$hwid_raw"
+        title="Your HWID (Raw - Hash Failed):" # Update title for fallback
+    fi
+fi
 
 
 # --- Display ---
 
-title="Your HWID:"
-# <<< CHANGE HERE: Use the raw hwid directly, not a hash >>>
-uuid_to_display="$hwid"
-
-# Calculate the width needed for the frame
+# Calculate the width needed for the frame based on the ID to display
+id_len=${#unique_id_to_display}
 title_len=${#title}
-uuid_len=${#uuid_to_display}
-# Ensure minimum width even if uuid is short/error message
-min_content_width=38 # Increase minimum width for typical UUID length
-content_width=$(( uuid_len > title_len ? uuid_len : title_len ))
+# Ensure minimum width
+min_content_width=42 # Increase min width slightly for SHA1 hash length
+content_width=$(( id_len > title_len ? id_len : title_len ))
 content_width=$(( content_width > min_content_width ? content_width : min_content_width ))
 content_width=$(( content_width + 4 )) # Add padding for spaces and borders
 
@@ -84,9 +110,9 @@ side_border="║"
 
 # Center the content lines
 title_line=$(center_text_line "$title" "$content_width")
-uuid_line=$(center_text_line "$uuid_to_display" "$content_width")
+uuid_line=$(center_text_line "$unique_id_to_display" "$content_width")
 
-# Display the framed UUID
+# Display the framed ID
 echo # Add a newline before the box
 echo "$top_border"
 echo "$side_border$title_line$side_border"
@@ -94,15 +120,15 @@ echo "$side_border$uuid_line$side_border"
 echo "$bottom_border"
 
 # Add signature line
-signature="-HWID finder by WatchedFungus88🍄"
+signature="-ID finder by WatchedFungus88🍄" # Slightly changed signature text
 # Center signature relative to the box width + 2 border chars
 signature_line=$(center_text_line "$signature" "$((content_width + 2))")
 echo "$signature_line"
 echo # Add a newline after the signature
 
-# Exit with success only if HWID was found
-if [[ "$hwid" == "UUID_NOT_FOUND" ]]; then
-    exit 1 # Indicate failure if UUID couldn't be found
+# Exit with success only if HWID was originally found (before hashing)
+if [[ "$retrieval_failed" == true ]]; then
+    exit 1 # Indicate failure if original UUID couldn't be found
 else
     exit 0 # Indicate success
 fi
