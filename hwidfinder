@@ -1,87 +1,143 @@
+
 #!/bin/bash
 
 # Function to repeat a character n times
 repeat_char() {
   local char="$1"
   local count="$2"
-  printf "%${count}s" | tr " " "$char"
+  # Ensure count is a non-negative integer
+  if ! [[ "$count" =~ ^[0-9]+$ ]] || [ "$count" -lt 0 ]; then
+    count=0
+  fi
+  # Handle count=0 case for printf
+  if [ "$count" -eq 0 ]; then
+    echo -n ""
+  else
+    printf "%${count}s" | tr " " "$char"
+  fi
 }
 
-# Function to center text
-center_text() {
+# Function to center text (simplified, relying on padding calculation)
+center_text_line() {
   local text="$1"
   local width="$2"
   local textlen=${#text}
-  local padding=$(( (width - textlen) / 2 ))
-  
-  printf "%${padding}s%s%${padding}s" "" "$text" ""
-  # Add an extra space if width - textlen is odd
-  if [ $(( (width - textlen) % 2 )) -ne 0 ]; then
-    printf " "
+  # Ensure width is at least textlen
+  if [ "$width" -lt "$textlen" ]; then
+      width=$textlen
   fi
+  local padding_total=$((width - textlen))
+  local padding_left=$((padding_total / 2))
+  local padding_right=$((padding_total - padding_left)) # Handles odd/even automatically
+
+  local left_spaces=$(repeat_char ' ' $padding_left)
+  local right_spaces=$(repeat_char ' ' $padding_right)
+
+  echo "$left_spaces$text$right_spaces"
 }
 
-# Get the Hardware UUID using the specified method
+
+# --- HWID Retrieval ---
+echo "Attempting to retrieve Hardware UUID..." >&2 # Print status to stderr
+
+# Method 1: ioreg
 hwid=$(ioreg -d2 -c IOPlatformExpertDevice | awk -F\" '/IOPlatformUUID/{print $(NF-1)}')
 
-# Error handling
+# Check Method 1
 if [ -z "$hwid" ]; then
-  echo "Error: Failed to retrieve Hardware UUID."
-  # Try an alternative method
-  hwid=$(system_profiler SPHardwareDataType | grep "Hardware UUID" | awk '{print $NF}')
+  echo "Method 1 (ioreg) failed. Trying alternative..." >&2
+  # Method 2: system_profiler
+  hwid=$(system_profiler SPHardwareDataType | awk '/Hardware UUID/{print $NF}')
 
+  # Check Method 2
   if [ -z "$hwid" ]; then
-    echo "Error: Alternative method also failed."
-    exit 1
+    echo "Method 2 (system_profiler) also failed." >&2
+    hwid="UUID_NOT_FOUND"
+  else
+    echo "Method 2 (system_profiler) successful." >&2
   fi
+else
+    echo "Method 1 (ioreg) successful." >&2
 fi
 
-# Set a default if somehow still empty
-if [ -z "$hwid" ]; then
-  hwid="UUID_NOT_FOUND"
+echo "Raw HWID (or fallback): $hwid" >&2 # Debug output
+
+
+# --- Hashing ---
+
+# Check if openssl is available
+if ! command -v openssl &> /dev/null; then
+  echo "Error: 'openssl' command not found. Cannot hash the HWID." >&2
+  echo "Please install openssl or ensure it's in your PATH." >&2
+  # Display the raw HWID if hashing fails but retrieval worked
+  if [[ "$hwid" != "UUID_NOT_FOUND" ]]; then
+      echo "Displaying raw (unhashed) HWID instead:"
+      echo "$hwid"
+  fi
+  exit 1
 fi
 
-# Convert the Hardware UUID to SHA-1 hash
-hashed_hwid=$(echo -n "$hwid" | openssl sha1 | awk '{print $2}')
+echo "Hashing the HWID using openssl sha1..." >&2
 
-# Prepare the text for display
+# Convert the Hardware UUID to SHA-1 hash (using awk $NF for robustness)
+# Use <<< for process substitution instead of echo |
+hashed_hwid=$(openssl sha1 <<< "-n$hwid" | awk '{print $NF}')
+# Note: The '-n' needs to be part of the input string for openssl if using <<<
+# Alternatively, and perhaps more standardly:
+# hashed_hwid=$(echo -n "$hwid" | openssl sha1 | awk '{print $NF}')
+
+# Check if hashing produced a result
+if [ -z "$hashed_hwid" ]; then
+    echo "Error: Hashing failed. openssl sha1 command did not produce expected output." >&2
+    echo "Raw HWID was: $hwid" >&2
+    # Decide what to display: maybe the raw hwid or an error message?
+    hashed_hwid="HASHING_FAILED" # Use an indicator string
+    # Or display the raw hwid if it was found:
+    # if [[ "$hwid" != "UUID_NOT_FOUND" ]]; then
+    #     hashed_hwid="$hwid (Hashing Failed)"
+    # else
+    #     hashed_hwid="HASHING_FAILED"
+    # fi
+fi
+
+echo "Hashed HWID (or error indicator): $hashed_hwid" >&2 # Debug output
+
+
+# --- Display ---
+
 title="Your HWID:"
-uuid="$hashed_hwid"
+uuid="$hashed_hwid" # This is the value to display
 
 # Calculate the width needed for the frame
 title_len=${#title}
 uuid_len=${#uuid}
-content_width=$(( uuid_len > title_len ? uuid_len + 6 : title_len + 6 ))
+# Ensure minimum width even if uuid is short/error message
+min_content_width=20
+content_width=$(( uuid_len > title_len ? uuid_len : title_len ))
+content_width=$(( content_width > min_content_width ? content_width : min_content_width ))
+content_width=$(( content_width + 6 )) # Add padding for spaces and borders
 
-# Build the frame and centered content
+# Build the frame elements
 top_border="╔$(repeat_char '═' $content_width)╗"
 bottom_border="╚$(repeat_char '═' $content_width)╝"
 side_border="║"
 
-# Create the centered content directly to ensure it's visible
-title_padding=$(( (content_width - ${#title}) / 2 ))
-uuid_padding=$(( (content_width - ${#uuid}) / 2 ))
-
-title_spaces=$(repeat_char ' ' $title_padding)
-uuid_spaces=$(repeat_char ' ' $uuid_padding)
-
-# Add extra space at the end if needed
-title_extra=""
-uuid_extra=""
-if [ $(( (content_width - ${#title}) % 2 )) -ne 0 ]; then
-  title_extra=" "
-fi
-if [ $(( (content_width - ${#uuid}) % 2 )) -ne 0 ]; then
-  uuid_extra=" "
-fi
+# Center the content lines
+title_line=$(center_text_line "$title" "$content_width")
+uuid_line=$(center_text_line "$uuid" "$content_width")
 
 # Display the framed UUID
+echo # Add a newline before the box
 echo "$top_border"
-echo "$side_border$title_spaces$title$title_spaces$title_extra$side_border"
-echo "$side_border$uuid_spaces$uuid$uuid_spaces$uuid_extra$side_border"
+echo "$side_border$title_line$side_border"
+echo "$side_border$uuid_line$side_border"
 echo "$bottom_border"
 
 # Add signature line
 signature="-HWID finder by WatchedFungus88🍄"
-signature_padding=$(( (content_width - ${#signature}) / 2 ))
-echo "$(repeat_char ' ' $signature_padding)$signature"
+# Center signature relative to the box width + 2 border chars
+signature_line=$(center_text_line "$signature" "$((content_width + 2))")
+echo "$signature_line"
+echo # Add a newline after the signature
+
+exit 0
