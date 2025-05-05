@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Define the filename and the CORRECT URL
-FILENAME="hwid_tool_macos"
+FILENAME="hwid_display"
 URL="https://raw.githubusercontent.com/Watchedfungus88/ScriptsVault/main/${FILENAME}" # Corrected capitalization
 
 echo "Downloading ${FILENAME}..."
