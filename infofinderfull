@@ -1,7 +1,49 @@
 #!/bin/bash
 
+# Define the filename and the CORRECT URL
+FILENAME="hwid_tool_macos"
+URL="https://raw.githubusercontent.com/Watchedfungus88/ScriptsVault/main/${FILENAME}" # Corrected capitalization
 
-curl -fsLO https://raw.githubusercontent.com/Watchedfungus88/scriptsvault/main/hwid_tool_macos
-chmod +x hwid_tool_macos
-./hwid_tool_macos
-rm hwid_tool_macos
+echo "Downloading ${FILENAME}..."
+
+# Use curl with:
+# -f: Fail silently on server errors (don't output HTML error pages)
+# -s: Silent mode (don't show progress meter)
+# -L: Follow redirects (VERY important for GitHub raw links)
+# -O: Output to a file named like the remote file (${FILENAME})
+curl -fsLO "$URL"
+
+# Check if the download was successful
+# $? holds the exit status of the last command. 0 means success.
+if [ $? -ne 0 ]; then
+  echo "Error: Failed to download ${FILENAME} from ${URL}"
+  echo "Please check the URL and your internet connection."
+  exit 1 # Exit the script indicating an error
+fi
+
+echo "Download complete. Making executable..."
+
+# Make the downloaded file executable
+chmod +x "$FILENAME"
+if [ $? -ne 0 ]; then
+  echo "Error: Failed to make ${FILENAME} executable."
+  rm -f "$FILENAME" # Clean up the downloaded file
+  exit 1
+fi
+
+echo "Executing ${FILENAME}..."
+
+# Execute the downloaded file
+# The output of this command will appear in the terminal
+./"$FILENAME"
+EXEC_STATUS=$? # Capture the exit status of the tool
+
+echo "Execution finished. Cleaning up..."
+
+# Remove the downloaded file
+rm -f "$FILENAME" # Use -f to force removal and ignore errors if it doesn't exist
+
+echo "Cleanup complete."
+
+# Exit with the status code of the executed tool (optional, but good practice)
+exit $EXEC_STATUS
